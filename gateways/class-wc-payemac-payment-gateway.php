@@ -68,9 +68,12 @@ function wcpayemax_init_gateway_class() {
 	$this->title = $this->get_option( 'title' );
 	$this->description = $this->get_option( 'description' );
 	$this->enabled = $this->get_option( 'enabled' );
-	$this->testmode = 'yes' === $this->get_option( 'testmode' );
-	$this->private_key = $this->testmode ? $this->get_option( 'test_private_key' ) : $this->get_option( 'private_key' );
-	$this->publishable_key = $this->testmode ? $this->get_option( 'test_publishable_key' ) : $this->get_option( 'publishable_key' );
+    $this->payemax_merchant_id = $this->get_option( 'payemax_merchant_id' );
+    $this->payemax_merchant_secret_key = $this->get_option( 'payemax_merchant_secret_key' );
+    $this->payemaxapi = $this->get_option( 'payemaxapi' );
+
+	// $this->testmode = 'yes' === $this->get_option( 'testmode' );
+
  
 	// This action hook saves the settings
 	add_action( 'woocommerce_update_options_payment_gateways_' . $this->id, array( $this, 'process_admin_options' ) );
@@ -108,29 +111,19 @@ function wcpayemax_init_gateway_class() {
 			'description' => 'This controls the description which the user sees during checkout.',
 			'default'     => 'Pay with your credit card via our super-cool payment gateway.',
 		),
-		'testmode' => array(
-			'title'       => 'Test mode',
-			'label'       => 'Enable Test Mode',
-			'type'        => 'checkbox',
-			'description' => 'Place the payment gateway in test mode using test API keys.',
-			'default'     => 'yes',
-			'desc_tip'    => true,
-		),
-		'test_publishable_key' => array(
-			'title'       => 'Test Publishable Key',
+	
+		'payemax_merchant_id' => array(
+			'title'       => 'PayerMax Merchant ID',
 			'type'        => 'text'
 		),
-		'test_private_key' => array(
-			'title'       => 'Test Private Key',
-			'type'        => 'password',
+		'payemax_merchant_secret_key' => array(
+			'title'       => 'PayerMax Secret Key',
+			'type'        => 'text',
 		),
-		'publishable_key' => array(
-			'title'       => 'Live Publishable Key',
+	
+		'payemaxapi' => array(
+			'title'       => 'PayerMax API URL[Test or live] ',
 			'type'        => 'text'
-		),
-		'private_key' => array(
-			'title'       => 'Live Private Key',
-			'type'        => 'password'
 		)
 	);
  
@@ -275,15 +268,23 @@ function createLinkString($param)
 
 // end API tools
 
+$homeurl = get_home_url();
+$apiend = '/wc-api/return_response_cbl';
 
+$apiurl = $homeurl.$apiend;
 // main API Calling here
 
-$url = 'https://pay-gate-uat.payermax.com/aggregate-pay-gate/api/gateway';
+//getting Dynamic info from admin back-end
+
+
+  get_option( 'sultenhest_theme_social_options' );
+
+$url = $this->payemaxapi; //'https://pay-gate-uat.payermax.com/aggregate-pay-gate/api/gateway';
 
 //1 Assemble request parameters according to the guide
 //TODO Replace them with your value
 $post_data = array(
-    'merchantId' => 'SP13591468',//change to your merchant Id from SHAREit pay
+    'merchantId' =>$this->payemax_merchant_id, //'SP13591468',//change to your merchant Id from SHAREit pay
     'bizType' => 'IN_CB',//default value without modify
     'version' => '2.1',//default value without modify
     'orderId' => $order_id,//change to your own order id
@@ -292,19 +293,19 @@ $post_data = array(
     'countryCode' => 'IN',//change to the transaction country code
     'currency' => 'INR',//change to the transaction currency code
     'totalAmount' => $totalamount,//change to the transaction amount
-    'frontCallBackUrl' => 'http://localhost/wpweb/wc-api/return_response_cbl',//change to your own front callback url
-    'showResult' => '5',//default value
-    'expireTime' => '1800',//change to your own transaction expire time
+    'frontCallBackUrl' => $apiurl,//change to your own front callback url
+    'showResult' => '1',//default value
+    'expireTime' => '300',//change to your own transaction expire time
     'description' => 'user description',//change to the end-customer description
     'reference' => 'reference',//change to the reference
     'language' => 'en',//default value
     'paymentDetail' => '{\"paymentType\":\"19\",\"accountNo\":\"\"}',//change to the paymentType and accountNo
     'userDetail' => '{\"name\":\"raoxw\",\"email\":\"raoxw_sh@qq.com\",\"phoneNumber\":\"4567890134342\",\"citizenIdNo\":\"12341292\",\"displaySave\":1,\"deviceId\":\"dadba887ba0b6b57c9d1abef46864113\",\"ip\":\"\"}',//
-    'callbackUrl' => 'http://localhost/wpweb/wc-api/return_response_cbl',//change to your own server callback url
+    'callbackUrl' => $apiurl,//change to your own server callback url
 );
 
-
-$sign = signForMd5('38565022dc179928', $post_data);//change to your merchant secret key from SHAREit pay
+//test key like '38565022dc179928'
+$sign = signForMd5($this->payemax_merchant_secret_key, $post_data);//change to your merchant secret key from SHAREit pay
 $post_data['sign'] = $sign;
 
 //2 Request SHAREit Pay
@@ -318,7 +319,7 @@ if (!empty($bizCode) && '0000' == $bizCode) {
     $data = $response['data'];
 
     $responseSign = $data['sign'];
-    if (verifyForMd5('38565022dc179928', $data, $responseSign)) {//change to your merchant secret key from SHAREit pay
+    if (verifyForMd5($this->payemax_merchant_secret_key, $data, $responseSign)) {//change to your merchant secret key from SHAREit pay
         echo 'success';
 
 $paytn = $data['requestUrl']; // this is url where user redirect after place order to custom gateway website
@@ -377,7 +378,7 @@ return wp_redirect($this->get_return_url( $order ));
 
 
 
-elseif ($order_status == 0) {
+elseif ($order_status == 2) {
 	$order = wc_get_order( $order_id );
 
 $order->update_status( 'failed', __( 'payment not sucess some reason', 'woocommerce' ) );
