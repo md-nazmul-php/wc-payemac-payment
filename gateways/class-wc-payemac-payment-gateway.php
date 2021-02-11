@@ -21,25 +21,6 @@
  * @author     Md Nazmul <php673500@gmail.com>
  */
 
-//Adding plugin page as a Demo test
-function wcpayemax_plugin_menu() {
-    add_plugins_page(
-        __( 'Wc Payemax Page', 'textdomain' ), // menu page title
-        __( 'Wc Payemax', 'textdomain' ), //Admin menu Title
-        'manage_options', //capability
-        'wpdocs-unique-identifier',//slug
-        'wpdocs_plugin_function'   //calback functions
-    );
-}
-add_action( 'admin_menu', 'wcpayemax_plugin_menu' );
-
-
-function wpdocs_plugin_function(){
-
-
-	echo "This is Demo plugin menu page";
-}
-
 
 // =============Start Plugin Class=================
 
@@ -312,7 +293,7 @@ $post_data = array(
     'currency' => 'INR',//change to the transaction currency code
     'totalAmount' => $totalamount,//change to the transaction amount
     'frontCallBackUrl' => 'http://localhost/wpweb/wc-api/return_response_cbl',//change to your own front callback url
-    'showResult' => '1',//default value
+    'showResult' => '5',//default value
     'expireTime' => '1800',//change to your own transaction expire time
     'description' => 'user description',//change to the end-customer description
     'reference' => 'reference',//change to the reference
@@ -340,9 +321,8 @@ if (!empty($bizCode) && '0000' == $bizCode) {
     if (verifyForMd5('38565022dc179928', $data, $responseSign)) {//change to your merchant secret key from SHAREit pay
         echo 'success';
 
-$paytn = $data['requestUrl'];
-// echo '<a href=" '. $paytn .'"'.'id="payUrl" class="payUrl">Confirm Order Now</a>';
-//         //TODO Replace with your own logic
+$paytn = $data['requestUrl']; // this is url where user redirect after place order to custom gateway website
+
 
     } else {
         echo 'sign error';
@@ -354,17 +334,16 @@ $paytn = $data['requestUrl'];
 }
 
 
- $order = wc_get_order( $order_id );
+$order = wc_get_order( $order_id );
 
 // Mark as on-hold (we're awaiting the payment)
-$order->update_status( 'processing', __( 'Awaiting for gateway Confirmation', 'woocommerce' ) );
+$order->update_status( 'on-hold', __( 'Awaiting for gateway Confirmation', 'woocommerce' ) );
 
 // Reduce stock levels
 $order->reduce_order_stock();
 
 // Remove cart
 WC()->cart->empty_cart();
-echo "Order has been submitted!";
 
 // Return thankyou redirect
 return array(
@@ -372,37 +351,50 @@ return array(
 'redirect'  => $paytn
 );
 
-
-	
- 
 }
  
 
-// CallBack URL should be http://localhost/wpweb/wc-api/return_response_cbl
+//===================== web hook====================
+
 
 public function webhook() {
+global $woocommerce;
+
 $order_id= $_GET['orderId'];
 $order_status= $_GET['status'];
 
-if ($order_status=1) {
+if ($order_status == 1) {
 
 
  $order = wc_get_order( $order_id );
 
-$order->update_status( 'completed', __( 'payment completed', 'woocommerce' ) );
+$order->update_status( 'processing', __( 'payment completed', 'woocommerce' ) );
 
-	$order->payment_complete();
- 
-	update_option('webhook_debug', $_GET);
-	return true;
+
+return wp_redirect($this->get_return_url( $order )); 
+
+}
+
+
+
+elseif ($order_status == 0) {
+	$order = wc_get_order( $order_id );
+
+$order->update_status( 'failed', __( 'payment not sucess some reason', 'woocommerce' ) );
+$order->save();
+return wp_redirect($this->get_return_url( $order ));
+
+
 }
 else{
-$url = 'https://google.com';
-wp_redirect($url);
-exit();
+$order = wc_get_order( $order_id );
+
+$order->update_status( 'pending', __( 'Order pending some reason try again or contact support.', 'woocommerce' ) );
+$order->save();
+return wp_redirect($this->get_return_url( $order ));
+
 
 }
-
 	 	}
  	}
 }
